@@ -1,0 +1,210 @@
+---
+title: "Project Part 1: Exploratory Data Analysis"
+author: "Akhil Desai"
+fontsize: 12pt
+geometry: margin=1in
+urlcolor: black
+output: pdf_document
+header-includes:
+- \usepackage{setspace}
+- \onehalfspacing
+---
+
+**GitHub Repository:** [https://github.com/Akhil-Desai/STAT3080_Project](https://github.com/Akhil-Desai/STAT3080_Project)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, highlight=FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+library(readr)
+library(knitr)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Read in the data
+clean_sex <- read.csv("../data/clean/cpsaat37.csv", stringsAsFactors = FALSE)
+clean_edu <- read.csv("../data/clean/cpsaat54.csv", stringsAsFactors = FALSE)
+
+# Prepare Data
+earnings_sex <- clean_sex |>
+  filter(str_detect(characteristic, "Total, 16 years|Men, 16 years|Women, 16 years")) |>
+  mutate(
+    group = case_when(
+      str_detect(characteristic, "Total") ~ "Total",
+      str_detect(characteristic, "Men")   ~ "Men",
+      str_detect(characteristic, "Women") ~ "Women"
+    ),
+    n_workers_2023     = as.numeric(n_2023),
+    median_weekly_2023 = as.numeric(earnings_2023)
+  ) |>
+  select(group, n_workers_2023, median_weekly_2023)
+
+edu_levels_ordered <- c(
+  "Less than a high school diploma",
+  "High school graduates, no college",
+  "Some college or associate degree",
+  "Bachelor's degree only",
+  "Advanced degree"
+)
+
+earnings_edu <- clean_edu |>
+  filter(str_detect(characteristic,
+    "Less than a high school|High school graduates|Some college|Bachelor|Advanced degree")) |>
+  filter(!str_detect(characteristic, "Bachelor.s degree and higher")) |>
+  mutate(
+    education = factor(characteristic, levels = edu_levels_ordered),
+    n_workers          = as.numeric(n_total),
+    median_weekly_2023 = as.numeric(earnings_total)
+  ) |>
+  arrange(education) |>
+  select(education, n_workers, median_weekly_2023)
+
+# Extract Spread and Gap Stats for context and conclusions
+overall_median <- earnings_sex$median_weekly_2023[earnings_sex$group == "Total"]
+earnings_range  <- diff(range(earnings_edu$median_weekly_2023))
+earnings_ratio  <- max(earnings_edu$median_weekly_2023) / min(earnings_edu$median_weekly_2023)
+sex_gap_dollars <- earnings_sex$median_weekly_2023[earnings_sex$group == "Men"] -
+                   earnings_sex$median_weekly_2023[earnings_sex$group == "Women"]
+sex_gap_pct     <- round(sex_gap_dollars /
+                   earnings_sex$median_weekly_2023[earnings_sex$group == "Men"] * 100, 1)
+```
+
+## 1. Introduction
+
+The gender wage gap, the returns to education, and the variability of earnings across skill levels represent some of the most persistent features of the American labor market. Despite decades of policy attention, full-time female workers continue to earn substantially less than their male counterparts on average, while wage inequality across educational attainment groups remains stark. Using publicly available data from the U.S. Bureau of Labor Statistics' Current Population Survey (BLS-CPS, 2023 Annual Averages), this report investigates the structure of wage inequality among full-time wage and salary workers in the United States. 
+
+Specifically, we explore two preliminary questions: 
+
+1. Is there a difference in the center of weekly earnings between male and female full-time wage and salary workers?
+2. How does the spread of weekly earnings vary across educational attainment levels?
+
+This exploratory analysis lays the groundwork for formal inference in Part 2.
+
+## 2. Data Summary
+
+### (a) Population vs. Sample
+The data represent a **sample**, not a census or full population dataset. Therefore, question (a) is not applicable. Please see section (b) for details on the sample selection.
+
+### (b) Sample Selection and Collection
+The data are drawn from the **Current Population Survey (CPS)**, a monthly household survey conducted jointly by the U.S. Census Bureau and the Bureau of Labor Statistics (BLS). The CPS is the primary source of labor force statistics for the population of the United States. The survey utilizes a **stratified multistage cluster sampling** design. This means it is not a simple random sample but rather a complex probability sample designed to be nationally and state-wide representative of the civilian noninstitutional population aged 16 and over. Each month, approximately 60,000 eligible households are interviewed. The data provided here (2023 Annual Averages) aggregates these monthly samples across the full calendar year of 2023 to provide stable, annualized estimates.
+
+### (c) Data Modifications
+The data pulled from the BLS (Table 37 and Table 54) are pre-aggregated summary tables, not individual-level microdata. Several modifications were made to prepare the tables for analysis in R:
+- **Column Filtering:** Only the current year (2023) columns were retained.
+- **Row Filtering (Scope):** For Table 37 (Earnings by Sex), we retained only the top-level aggregates ("Total", "Men", "Women" for ages 16 and over). Age-specific and race-specific subgroups were removed. For Table 54 (Earnings by Educational Attainment), we retained only the five mutually exclusive educational categories and excluded overlapping summary rows.
+- **Data Type Conversion:** Numeric fields were published as character strings containing comma separators (e.g., "1,202") and dollar signs. These strings were stripped of non-numeric characters and converted into standard numerical data types. Missing values were not imputed. We used the published medians exactly as provided by the BLS.
+
+### (d) Potential Issues
+There are several potential limitations to this dataset:
+- **Parameter Limitation (Medians vs. Means):** The BLS tables provide *median* weekly earnings, not *mean* earnings. While medians are highly robust to outliers, this limits our ability to use statistical tests that strictly require sample means or rely on sample variances. 
+- **Aggregated Summary Data:** We do not have access to individual-level observations (microdata). Because the data is already grouped, we cannot perform observation-level analysis.
+- **Scope Restrictions:** The dataset is explicitly restricted to **full-time wage and salary workers**. It completely excludes part-time workers, the self-employed, and those outside the labor force. 
+- **Sampling Error:** Because this is sample data, the published medians contain sampling error. The BLS does not publish confidence intervals alongside these specific summary tables.
+
+### (e) Appropriateness of the Data
+Despite its limitations, the data are highly appropriate for answering the proposed research questions. The BLS CPS is the authoritative source for U.S. labor statistics and strictly meets the project's requirement to use reputable government data. Table 37 directly provides the sample size and median weekly earnings disaggregated by sex, matching Q1 (comparing the center between male and female workers). Table 54 directly provides earnings stratified by educational attainment, matching Q2 (analyzing the spread across education levels). By using Annual Averages comprising over 700,000 household observations throughout the year, the estimates are highly stable and largely immune to seasonal volatility.
+
+## 3. Exploratory Analysis
+
+```{r, echo=FALSE, fig.width=6, fig.height=4, fig.align='center'}
+## Numerical and Graphical Summaries for Q1
+kable(earnings_sex |> filter(group != "Total") |> rename(Group=group, `N Workers (2023)`=n_workers_2023, `Median Weekly Earnings (USD)`=median_weekly_2023), 
+      caption = "Numerical Summary 1: Median Weekly Earnings by Sex",
+      format.args = list(big.mark = ","))
+
+earnings_sex_plot <- earnings_sex |> filter(group != "Total")
+
+ggplot(earnings_sex_plot, aes(x = group, y = median_weekly_2023, fill = group)) +
+  geom_col(width = 0.55, show.legend = FALSE, alpha = 0.9, color = "black", linewidth = 0.3) +
+  geom_hline(yintercept = overall_median, linetype = "dotted",
+             color = "#475569", linewidth = 0.8) +
+  geom_text(aes(label = paste0("$", median_weekly_2023)),
+            vjust = -0.8, size = 4, fontface = "bold", color = "#1e293b") +
+  annotate("text", x = 2.45, y = overall_median + 20,
+           label = paste0("Overall Median: $", overall_median),
+           size = 3.5, color = "#475569", hjust = 1) +
+  scale_fill_manual(values = c("Men" = "#3B82F6", "Women" = "#F43F5E")) +
+  scale_y_continuous(labels = scales::dollar_format(),
+                     limits = c(0, 1500),
+                     expand = expansion(mult = c(0, 0.05))) +
+  labs(
+    title    = "Graphical Summary 1: Median Weekly Earnings by Sex",
+    subtitle = "Full-time wage and salary workers, 2023",
+    x        = NULL,
+    y        = "Median Weekly Earnings (USD)",
+    caption  = "Source: BLS-CPS 2023 Annual Averages, Table 37"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 12, margin = margin(b=5)),
+    plot.subtitle    = element_text(color = "#64748b", margin = margin(b=15)),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(size = 11, face = "bold")
+  )
+```
+
+```{r, echo=FALSE, fig.width=7, fig.height=4, fig.align='center'}
+## Numerical and Graphical Summaries for Q2
+kable(earnings_edu |> rename(`Educational Attainment`=education, `N Workers (2023)`=n_workers, `Median Weekly Earnings (USD)`=median_weekly_2023), 
+      caption = "Numerical Summary 2: Earnings by Educational Attainment",
+      format.args = list(big.mark = ","))
+
+ggplot(earnings_edu,
+       aes(x = median_weekly_2023, y = reorder(education, median_weekly_2023))) +
+  geom_segment(aes(xend = 0, yend = reorder(education, median_weekly_2023)),
+               color = "#cbd5e1", linewidth = 1) +
+  geom_point(size = 5, color = "#2563EB") +
+  geom_text(aes(label = paste0("$", median_weekly_2023)),
+            hjust = -0.4, size = 3.8, fontface = "bold", color = "#1e293b") +
+  scale_x_continuous(labels = scales::dollar_format(),
+                     limits = c(0, 2300),
+                     expand = expansion(mult = c(0, 0.05))) +
+  scale_y_discrete(labels = scales::label_wrap(25)) +
+  labs(
+    title    = "Graphical Summary 2: Earnings by Educational Attainment",
+    subtitle = "Full-time wage and salary workers aged 25+, 2023",
+    x        = "Median Weekly Earnings (USD)",
+    y        = NULL,
+    caption  = "Source: BLS-CPS 2023 Annual Averages, Table 54"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 12, margin = margin(b=5)),
+    plot.subtitle    = element_text(color = "#64748b", margin = margin(b=15)),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y      = element_text(size = 11, lineheight = 0.9)
+  )
+```
+
+## 4. Conclusions
+
+Based on the numerical and graphical summaries generated in the exploratory analysis, we address the preliminary research questions using a structured four-part framework:
+
+**Q1: Is there a difference in the center of weekly earnings between male and female full-time wage and salary workers?**
+
+* **(a) Initial Conclusions:** The numerical and graphical summaries indicate that male full-time workers have a consistently higher median weekly earnings center (\$1,202) compared to female full-time workers (\$1,005). 
+* **(b) Statistical Interpretation:** The "center" of the distribution for male earnings is shifted upward relative to the female earnings distribution by a difference of \$`r sex_gap_dollars` (a `r sex_gap_pct`% relative gap). With men earning above the overall median (\$1,117) and women earning below it, there is a pronounced separation in the central tendency of these two independent groups.
+* **(c) Implications:** In the context of the question, these patterns imply that full-time employment status alone does not equalize earnings across genders. The clear separation between the center of the distributions points to structural factors—such as occupational segregation or wage disparities—systematically affecting compensation based on sex.
+* **(d) Topic Summary:** Regarding the broader topic of U.S. wage and income inequality, the gender earnings gap remains a prominent and measurable feature of the labor market. The typical male worker commands noticeably more per week than the typical female worker, motivating formal two-sample hypothesis testing in Part 2.
+
+**Q2: How does the spread of weekly earnings vary across educational attainment levels?**
+
+* **(a) Initial Conclusions:** The summaries demonstrate a clear monotonic increase in median weekly earnings as educational attainment rises, beginning at \$708 for those without a high school diploma and reaching \$1,837 for those with an advanced degree.
+* **(b) Statistical Interpretation:** The earnings data exhibits a massive spread (between-group variance), with a range of \$`r earnings_range` from the lowest to the highest educational tier (a ratio of `r round(earnings_ratio, 2)`×). The sharpest variance between contiguous ranks occurs between "Some college" and "Bachelor's degree only" (a \$477 increase), highlighting significant between-group variability.
+* **(c) Implications:** This trend implies a strong "skills premium" structurally built into the labor market. The wide spread suggests that crossing the threshold of a four-year degree drastically shifts a worker's earnings distribution, while lower educational tiers remain much closer together in the wage scale. 
+* **(d) Topic Summary:** In the context of U.S. wage inequality, educational attainment dictates a vast spread in earnings potential. The stark financial boundaries between education levels underscore how formal schooling stratifies the full-time workforce, motivating formal tests for equal variances (e.g., Levene's test) in Part 2.
+
+*Note: Both findings are exploratory. No statistical inference has been performed. The analyses establish that group differences in center and spread appear practically meaningful and warrant formal testing.*
+
+\newpage
+## 5. References
+
+U.S. Bureau of Labor Statistics. (2024). *Median weekly earnings of full-time wage and salary workers by selected characteristics (Table 37)*. In Current Population Survey (CPS). Retrieved from https://www.bls.gov/cps/aa2023/cpsaat37.htm
+
+U.S. Bureau of Labor Statistics. (2024). *Median weekly earnings of full-time wage and salary workers 25 years and older by educational attainment (Table 54)*. In Current Population Survey (CPS). Retrieved from https://www.bls.gov/cps/aa2023/cpsaat54.htm
+
+**AI Attribution Note:** Generative AI tools were utilized to assist with the structure and synthesis of this report, as well as portions of the code workflow, in accordance with the course's AI policy and UVA guidelines.

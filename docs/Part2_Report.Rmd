@@ -1,0 +1,124 @@
+---
+title: "Project Part 2: Hypothesis Testing"
+author: "Akhil Desai"
+fontsize: 12pt
+geometry: margin=1in
+urlcolor: black
+output: 
+  pdf_document:
+    highlight: null
+header-includes:
+- \usepackage{setspace}
+- \onehalfspacing
+---
+
+**GitHub Repository:** [https://github.com/Akhil-Desai/STAT3080_Project](https://github.com/Akhil-Desai/STAT3080_Project)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+```
+
+```{r data-prep}
+clean_sex <- read.csv("../data/clean/cpsaat37.csv", stringsAsFactors = FALSE)
+
+earnings_sex <- clean_sex |>
+  filter(str_detect(characteristic, "Total, 16 years|Men, 16 years|Women, 16 years")) |>
+  mutate(
+    group = case_when(
+      str_detect(characteristic, "Total") ~ "Total",
+      str_detect(characteristic, "Men")   ~ "Men",
+      str_detect(characteristic, "Women") ~ "Women"
+    ),
+    n_workers_2023 = as.numeric(n_2023)
+  ) |>
+  select(group, n_workers_2023)
+
+n_total <- earnings_sex$n_workers_2023[earnings_sex$group == "Total"]
+n_women <- earnings_sex$n_workers_2023[earnings_sex$group == "Women"]
+p_hat   <- n_women / n_total
+```
+
+## 1. Introduction
+
+In Part 1 of this project, we investigated wage inequality and the demographic makeup of the U.S. full-time labor market. Our exploratory data analysis revealed a prominent gender wage gap, with male full-time workers earning a median of \$1,202 weekly compared to \$1,005 for female workers. We also observed vast disparities in median earnings across educational attainment levels. 
+
+Because the provided Current Population Survey (CPS) summary tables only report group medians and sample sizes—lacking the sample standard deviations or individual-level microdata necessary to perform formal hypothesis tests on means (e.g., a two-sample t-test for earnings)—we must mathematically pivot our inferential focus. In Part 2, we shift our attention from the *earnings* of the workforce to the structural *composition* of the workforce. Specifically, building on the gender disparities identified in Part 1, we ask: **Is the proportion of women in the U.S. full-time wage and salary workforce significantly less than 50%?** 
+
+## 2. Methods
+
+**(a) Research Question and Procedure:**  
+We will answer the research question using a **One-Sample Z-Test for a Population Proportion**. Let $p$ be the true population proportion of full-time wage and salary workers who are women. We test the null hypothesis $H_0: p = 0.5$ against the one-sided alternative hypothesis $H_a: p < 0.5$.
+
+**(b) Appropriateness of Procedure:**  
+This procedure is appropriate because we are evaluating a claim about a single categorical variable (sex) converted into a binary outcome (Woman vs. Man), and we are comparing the resulting population parameter ($p$) against a fixed theoretical expected value ($0.5$). 
+
+**(c & d) Assumption Verification:**  
+The theoretical assumptions for the one-sample z-test for proportions are strictly met:
+1. **Independence:** Observations must be independent. While not a Simple Random Sample, the CPS employs a rigorous stratified multistage probability design. According to the BLS CPS methodology, this complex sampling ensures national representativeness. Furthermore, the population of U.S. workers is in the tens of millions, easily satisfying the 10% condition (our sample size of `r format(n_total, big.mark=",")` thousands is less than 10% of the entire population).
+2. **Success/Failure Condition (Normality):** The sampling distribution of the sample proportion $\hat{p}$ is approximately normal if we expect at least 10 successes and 10 failures under the null hypothesis. Algebraically:
+   $$E[\text{Women}] = n \times p_0 = 120,907 \times 0.5 = 60,453.5 \ge 10$$
+   $$E[\text{Men}] = n \times (1 - p_0) = 120,907 \times 0.5 = 60,453.5 \ge 10$$
+   Both expected counts are vastly greater than 10. The normality assumption relies on these expected counts, not merely a "large sample size" heuristic.
+
+**(e) No Additional Tests:**  
+No hypothesis tests were used to verify these assumptions; independence is justified by survey methodology (expert source), and normality by algebraic expected counts.
+
+## 3. Results
+
+The following code executes the formal hypothesis test without a continuity correction (as verified in Homework 11):
+
+```r
+# H0: p = 0.5 vs Ha: p < 0.5
+prop.test(x = n_women, n = n_total, p = 0.5, 
+          alternative = "less", correct = FALSE)
+```
+
+```text
+	1-sample proportions test without continuity correction
+
+data:  n_women out of n_total, null probability 0.5
+X-squared = 1290.9, df = 1, p-value < 2.2e-16
+alternative hypothesis: true p is less than 0.5
+95 percent confidence interval:
+ 0.00000 0.45069
+sample estimates:
+        p 
+0.4483363 
+```
+
+```{r proportion-test}
+test_res <- prop.test(x = n_women, n = n_total, p = 0.5, alternative = "less", correct = FALSE)
+se <- sqrt(0.5 * 0.5 / n_total)
+z_stat <- (p_hat - 0.5) / se
+```
+
+**(b) Interpretation of Output:**  
+The test yields a sample proportion of $\hat{p} \approx 0.4483$. Under the null hypothesis, the standard error of the sampling distribution is incredibly small due to the massive sample size ($SE = \sqrt{0.5(0.5)/120907} \approx 0.0014$). 
+Consequently, the $X$-squared statistic is $1290.9$, which corresponds to a staggering z-statistic of $Z = -\sqrt{1290.9} \approx -35.9$. This extreme test statistic produces a p-value of `< 2.2e-16`, meaning the probability of observing a sample proportion of 44.83% or lower—assuming women truly make up exactly 50% of the workforce—is functionally zero. The 95% confidence interval indicates the true proportion is bounded below $45.07\%$.
+
+**(c) Statistical Significance:**  
+Because the p-value ($< 0.0001$) is far below any standard significance level (e.g., $\alpha = 0.05$ or even $\alpha = 0.001$), we decisively reject the null hypothesis. The test is highly statistically significant.
+
+## 4. Conclusions
+
+**(a) Non-Statistical Interpretation & Practical Significance:**  
+The data provide overwhelming evidence that women constitute a minority of the full-time wage and salary workforce in the United States. They make up roughly 44.8% of this specific workforce, significantly below an equal 50/50 split. 
+It is important to distinguish between *statistical* significance and *practical* significance. With $N = 120,907$, even a 49.9% vs 50.1% split would be statistically significant. However, a 44.8% representation is also *practically* significant: a $\approx 5.2\%$ gap translates to millions of missing full-time jobs for women compared to men, reflecting deep structural realities in the labor market.
+
+**(b) Limitations:**  
+A primary limitation of this analysis is its restricted scope. The CPS dataset strictly filters for **full-time** wage and salary workers. It completely excludes part-time workers, unpaid family workers, and the self-employed. Because women are historically overrepresented in part-time roles compared to men due to systemic caregiving expectations, this analysis reflects the composition of the *full-time* labor market exclusively, not the overall U.S. adult population or labor force. 
+
+**(c) Generalization:**  
+Despite the aforementioned limitations regarding scope, the conclusions can be robustly generalized within their domain. Because the Bureau of Labor Statistics utilizes a carefully weighted, nationally representative sampling methodology, we can confidently generalize that women made up less than half of the *entire* U.S. civilian noninstitutional full-time wage and salary workforce in the year 2023.
+
+\newpage
+## 5. References
+
+U.S. Bureau of Labor Statistics. (2024). *Median weekly earnings of full-time wage and salary workers by selected characteristics (Table 37)*. In Current Population Survey (CPS). Retrieved from https://www.bls.gov/cps/aa2023/cpsaat37.htm
+
+U.S. Bureau of Labor Statistics. (2024). *Design and Methodology (Current Population Survey)*. Retrieved from https://www.census.gov/programs-surveys/cps/technical-documentation/methodology.html
+
+**AI Attribution Note:** Generative AI was utilized to add analytical depth to this report. Specifically, the AI assisted in identifying the mathematical limitations of the aggregated median dataset (preventing the use of t-tests), pivoting the hypothesis to a structural proportion test, and formulating the mathematical interpretation of standard errors and practical vs. statistical significance. All R code was verified and structured with AI assistance in accordance with course guidelines.

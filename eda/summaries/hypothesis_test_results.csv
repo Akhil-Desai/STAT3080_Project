@@ -1,0 +1,2 @@
+n_total,n_women,sample_proportion,null_probability,x_squared,df,p_value,ci_lower,ci_upper,method
+120907,54207,0.4483363246131324,0.5,1290.8685932162737,1,5.452300877555337e-283,0,0.4506900145415788,1-sample proportions test without continuity correction
